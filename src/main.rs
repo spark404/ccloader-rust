@@ -1,10 +1,10 @@
 use crate::OpCodes::{ERRO, SBEGIN, SDATA, SEND, SRSP, UNKN};
 use clap::Parser;
 use retry::delay::Fixed;
-use retry::retry;
-use serialport::{DataBits, FlowControl, Parity, StopBits};
+use retry::{OperationResult, retry};
+use serialport::{DataBits, Parity, StopBits};
 use std::fs::File;
-use std::io::{BufRead, Read, Write};
+use std::io::{Read, Write};
 use std::time::Duration;
 
 #[derive(Parser, Debug)]
@@ -69,24 +69,26 @@ fn main() {
 
     let mut serial_buf: Vec<u8> = vec![0; 1000];
 
+    println!("Sending SBEGIN");
     serial_buf[0] = SBEGIN as u8;
     serial_buf[1] = 0;
-    let bytes_written = port.write(&serial_buf[0..2]).expect("Write failed");
-    println!("Bytes written {bytes_written}");
+    let _bytes_written = port.write(&serial_buf[0..2]).expect("Write failed");
+
+    println!("Waiting for SRSP");
 
     let result = retry(Fixed::from_millis(1000).take(15), || {
         let result = port.read(serial_buf.as_mut_slice());
         return match result {
             Ok(n) => {
                 if n == 0 {
-                    return Err("Serial connection closed".to_owned());
+                    return OperationResult::Err("Serial connection closed".to_owned());
                 }
                 if serial_buf[0] == ERRO as u8 {
-                    return Err("Programmer returned error".to_owned());
+                    return OperationResult::Err("Programmer returned error".to_owned());
                 }
-                Ok(result.unwrap())
+                OperationResult::Ok(result.unwrap())
             }
-            Err(err) => Err(err.to_string()),
+            Err(err) => OperationResult::Retry(err.to_string()),
         };
     });
 
@@ -112,7 +114,7 @@ fn main() {
                 println!("data underrun on the file")
             }
         }
-        Err(err) => panic!("die die die"),
+        Err(_err) => panic!("die die die"),
     }
     let result = port.write(data_buf.as_slice());
     match result {
@@ -121,7 +123,7 @@ fn main() {
                 println!("not all bytes written to port")
             }
         }
-        Err(err) => panic!("die die die"),
+        Err(_err) => panic!("die die die"),
     }
 
     let result = retry(Fixed::from_millis(1000).take(15), || {
@@ -129,19 +131,21 @@ fn main() {
         return match result {
             Ok(n) => {
                 if n == 0 {
-                    return Err("Serial connection closed".to_owned());
+                    return OperationResult::Err("Serial connection closed".to_owned());
                 }
                 if serial_buf[0] == ERRO as u8 {
-                    return Err("Programmer returned error".to_owned());
+                    return OperationResult::Err("Programmer returned error".to_owned());
                 }
-                Ok(result.unwrap())
+                OperationResult::Ok(result.unwrap())
             }
-            Err(err) => Err(err.to_string()),
+            Err(err) => OperationResult::Retry(err.to_string()),
         };
     });
 
-    if !result.is_ok() {
-        println!("Timeout waiting for SRSP");
-        return;
+    match result {
+        Ok(n) => {
+            println!("bytes written {n}")
+        },
+        Err(e) => println!("{}", e)
     }
 }
