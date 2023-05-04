@@ -147,10 +147,18 @@ fn main() {
 
         match port.read(serial_buf.as_mut_slice()) {
             Ok(n) => {
-                println!("bytes written {n}")
+                // EOF
+                if n == 0 {
+                    break Err(Error::new(ErrorKind::InvalidData, "connection closed"))
+                }
+                if serial_buf[0] == ERRO as u8 {
+                    break Err(Error::new(ErrorKind::InvalidData, "programmer returned error"))
+                }
+                println!("Block sent OK")
             },
             Err(e) => println!("{}", e)
         }
+
     };
 
     if upload_result.is_err() {
