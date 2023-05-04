@@ -9,3 +9,4 @@ edition = "2021"
 clap = { version = "4.0", features = ["derive"] }
 serialport = { version="4.2.0" }
 retry = "2.0.0"
+crc = "3.0.1"

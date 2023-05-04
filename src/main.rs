@@ -1,11 +1,15 @@
+use std::error::Error;
 use crate::OpCodes::{ERRO, SBEGIN, SDATA, SEND, SRSP, UNKN};
 use clap::Parser;
 use retry::delay::Fixed;
 use retry::{OperationResult, retry};
-use serialport::{DataBits, Parity, StopBits};
+use serialport::{DataBits, Parity, SerialPort, StopBits};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::time::Duration;
+use crc::{Crc, CRC_16_USB};
+
+pub const CRC_16: Crc<u16> = Crc::<u16>::new(&CRC_16_USB);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -107,26 +111,63 @@ fn main() {
 
     let mut data_buf: Vec<u8> = vec![0; 515];
     data_buf[0] = SDATA as u8;
-    let result = file.read(&mut data_buf[1..513]);
-    match result {
-        Ok(count) => {
-            if count < 512 {
-                println!("data underrun on the file")
-            }
-        }
-        Err(_err) => panic!("die die die"),
-    }
-    let result = port.write(data_buf.as_slice());
-    match result {
-        Ok(count) => {
-            if count < 515 {
-                println!("not all bytes written to port")
-            }
-        }
-        Err(_err) => panic!("die die die"),
-    }
 
-    let result = retry(Fixed::from_millis(1000).take(15), || {
+    let upload_result = loop {
+        // Read the next 512 bytes from the firmware file
+        let result = file.read(&mut data_buf[1..513]);
+        match result {
+            Ok(count) => {
+                if count == 0 {
+                    // Nothing more to read, we are done
+                    break Ok(())
+                }
+            }
+            Err(_err) => break _err,
+        }
+
+        let crc = CRC_16.checksum(&data_buf[1..513]);
+        data_buf[513] = ((crc >> 8) & 0xFF) as u8;
+        data_buf[514] = (crc & 0xFF) as u8;
+
+        match port.write(data_buf.as_slice()) {
+            Ok(n) => {
+            verify_bytes_written(n,515).expect("not enough data written")
+            }
+
+            Err(e) => break e
+        }
+        wait_for_response(port).expect("timeout");
+
+        match result {
+            Ok(count) => {
+                if count < 515 {
+                    break Err("not all bytes written to serial port")
+                }
+            }
+            Err(_err) => break _err
+        }
+
+        let result = wait_for_response();
+
+        match result {
+            Ok(n) => {
+                println!("bytes written {n}")
+            },
+            Err(e) => println!("{}", e)
+        }
+    };
+}
+fn verify_bytes_written(n: usize, expected: usize) -> Result<(), Error> {
+    return if n==expected {
+        Ok(()) } else {
+        return Err("Expected {expected} bytes, got {n}")
+    }
+}
+
+fn wait_for_response(mut port: Box<dyn SerialPort>) -> Result<Vec<u8>, Error> {
+    let mut serial_buf: Vec<u8> = vec![0; 64];
+
+    return retry(Fixed::from_millis(1000).take(15), || {
         let result = port.read(serial_buf.as_mut_slice());
         return match result {
             Ok(n) => {
@@ -141,11 +182,4 @@ fn main() {
             Err(err) => OperationResult::Retry(err.to_string()),
         };
     });
-
-    match result {
-        Ok(n) => {
-            println!("bytes written {n}")
-        },
-        Err(e) => println!("{}", e)
-    }
 }
