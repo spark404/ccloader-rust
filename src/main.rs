@@ -113,6 +113,11 @@ fn main() {
     let mut data_buf: Vec<u8> = vec![0; 515];
     data_buf[0] = SDATA as u8;
 
+    // increase the timeout on responses as the programmer needs to write the data
+    let timeout = port.timeout();
+    port.set_timeout(Duration::from_millis(2000))
+        .expect("set timeout failed");
+
     let upload_result = loop {
         // Read the next 512 bytes from the firmware file
         let result = file.read(&mut data_buf[1..513]);
@@ -151,6 +156,9 @@ fn main() {
     if upload_result.is_err() {
         println!("Upload failed")
     }
+
+    // restore timeout
+    port.set_timeout(timeout).expect("set_timeout failed");
 
     println!("Sending SEND");
     serial_buf[0] = SEND as u8;
