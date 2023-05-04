@@ -106,6 +106,7 @@ fn main() {
     let response: OpCodes = serial_buf[0].into();
     if response != SRSP {
         println!("Invalid reponse {:?}", response as u8);
+        return;
     }
 
     println!("Received SRSP, starting upload");
@@ -151,10 +152,11 @@ fn main() {
                 if n == 0 {
                     break Err(Error::new(ErrorKind::InvalidData, "connection closed"))
                 }
-                if serial_buf[0] == ERRO as u8 {
+                let status:OpCodes = serial_buf[0].into();
+                if status != SRSP  {
                     break Err(Error::new(ErrorKind::InvalidData, "programmer returned error"))
                 }
-                println!("Block sent OK")
+                println!("Block uploaded")
             },
             Err(e) => println!("{}", e)
         }
@@ -171,5 +173,4 @@ fn main() {
     println!("Sending SEND");
     serial_buf[0] = SEND as u8;
     let _bytes_written = port.write(&serial_buf[0..1]).expect("Write failed");
-
 }
