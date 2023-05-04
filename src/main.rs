@@ -1,11 +1,12 @@
-use std::error::Error;
+extern crate core;
+
 use crate::OpCodes::{ERRO, SBEGIN, SDATA, SEND, SRSP, UNKN};
 use clap::Parser;
 use retry::delay::Fixed;
 use retry::{OperationResult, retry};
-use serialport::{DataBits, Parity, SerialPort, StopBits};
+use serialport::{DataBits, Parity, StopBits};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Error, ErrorKind, Read, Write};
 use std::time::Duration;
 use crc::{Crc, CRC_16_USB};
 
@@ -122,7 +123,7 @@ fn main() {
                     break Ok(())
                 }
             }
-            Err(_err) => break _err,
+            Err(_err) => break Err(_err)
         }
 
         let crc = CRC_16.checksum(&data_buf[1..513]);
@@ -131,55 +132,28 @@ fn main() {
 
         match port.write(data_buf.as_slice()) {
             Ok(n) => {
-            verify_bytes_written(n,515).expect("not enough data written")
-            }
-
-            Err(e) => break e
-        }
-        wait_for_response(port).expect("timeout");
-
-        match result {
-            Ok(count) => {
-                if count < 515 {
-                    break Err("not all bytes written to serial port")
+                if n != 515 {
+                    break Err(Error::new(ErrorKind::InvalidData, "not all data sent"))
                 }
             }
-            Err(_err) => break _err
-        }
 
-        let result = wait_for_response();
+            Err(e) => break Err(e)
+        };
 
-        match result {
+        match port.read(serial_buf.as_mut_slice()) {
             Ok(n) => {
                 println!("bytes written {n}")
             },
             Err(e) => println!("{}", e)
         }
     };
-}
-fn verify_bytes_written(n: usize, expected: usize) -> Result<(), Error> {
-    return if n==expected {
-        Ok(()) } else {
-        return Err("Expected {expected} bytes, got {n}")
+
+    if upload_result.is_err() {
+        println!("Upload failed")
     }
-}
 
-fn wait_for_response(mut port: Box<dyn SerialPort>) -> Result<Vec<u8>, Error> {
-    let mut serial_buf: Vec<u8> = vec![0; 64];
+    println!("Sending SEND");
+    serial_buf[0] = SEND as u8;
+    let _bytes_written = port.write(&serial_buf[0..1]).expect("Write failed");
 
-    return retry(Fixed::from_millis(1000).take(15), || {
-        let result = port.read(serial_buf.as_mut_slice());
-        return match result {
-            Ok(n) => {
-                if n == 0 {
-                    return OperationResult::Err("Serial connection closed".to_owned());
-                }
-                if serial_buf[0] == ERRO as u8 {
-                    return OperationResult::Err("Programmer returned error".to_owned());
-                }
-                OperationResult::Ok(result.unwrap())
-            }
-            Err(err) => OperationResult::Retry(err.to_string()),
-        };
-    });
 }
