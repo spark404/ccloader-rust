@@ -8,9 +8,9 @@ use serialport::{DataBits, Parity, StopBits};
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
 use std::time::Duration;
-use crc::{Crc, CRC_16_USB};
+use crc::{Crc, CRC_16_XMODEM};
 
-pub const CRC_16: Crc<u16> = Crc::<u16>::new(&CRC_16_USB);
+pub const CRC_16: Crc<u16> = Crc::<u16>::new(&CRC_16_XMODEM);
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
