@@ -4,9 +4,10 @@ use crate::OpCodes::{ERRO, SBEGIN, SDATA, SEND, SRSP, UNKN};
 use clap::Parser;
 use retry::delay::Fixed;
 use retry::{OperationResult, retry};
-use serialport::{DataBits, Parity, StopBits};
+use serialport::{DataBits, Parity, SerialPort, StopBits};
 use std::fs::File;
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io;
+use std::io::{ErrorKind, Read, Write};
 use std::time::Duration;
 use crc::{Crc, CRC_16_XMODEM};
 
@@ -51,26 +52,34 @@ impl From<u8> for OpCodes {
 fn main() {
     let args = Args::parse();
 
-    let mut port = serialport::new(args.port, 115_200)
-        .timeout(Duration::from_millis(100))
-        .open()
-        .expect("Failed to open port");
+    let portname = args.port;
+    let filename = args.firmware.to_str().unwrap();
 
-    port.set_data_bits(DataBits::Eight)
-        .expect("Failed to set databits");
-
-    port.set_parity(Parity::None).expect("Failed to set parity");
-
-    port.set_stop_bits(StopBits::One)
-        .expect("Failed to set stopbits");
-
-    port.write_data_terminal_ready(true)
-        .expect("DTR high failed");
-
-    let mut file = match File::open(&args.firmware) {
-        Err(why) => panic!("couldn't open {}: {}", args.firmware.to_str().unwrap(), why),
+    let mut port = match open_serial_port(portname.to_owned()) {
+        Err(why) => panic!("couldn't open port {}: {}", portname, why),
         Ok(file) => file,
     };
+
+    let mut file = match File::open(&args.firmware) {
+        Err(why) => panic!("couldn't open {}: {}", filename, why),
+        Ok(file) => file,
+    };
+
+    let metadata = match file.metadata() {
+        Err(why) => panic!("unable to get metadata for {}: {}", filename, why),
+        Ok(metadata) => metadata
+    };
+
+    let blocks = metadata.len() / 512;
+    if metadata.len() % 512 > 0 {
+        println!("warning: {} doesn't end on a 512 byte block boundary", filename);
+    }
+
+    println!("Uploading");
+    println!("-------------------------------");
+    println!("  {}", args.firmware.file_name().unwrap().to_str().unwrap());
+    println!("  {} blocks", blocks);
+    println!();
 
     let mut serial_buf: Vec<u8> = vec![0; 1000];
 
@@ -80,7 +89,6 @@ fn main() {
     let _bytes_written = port.write(&serial_buf[0..2]).expect("Write failed");
 
     println!("Waiting for SRSP");
-
     let result = retry(Fixed::from_millis(1000).take(15), || {
         let result = port.read(serial_buf.as_mut_slice());
         return match result {
@@ -139,7 +147,7 @@ fn main() {
         match port.write(data_buf.as_slice()) {
             Ok(n) => {
                 if n != 515 {
-                    break Err(Error::new(ErrorKind::InvalidData, "not all data sent"))
+                    break Err(io::Error::new(ErrorKind::InvalidData, "not all data sent"))
                 }
             }
 
@@ -150,11 +158,11 @@ fn main() {
             Ok(n) => {
                 // EOF
                 if n == 0 {
-                    break Err(Error::new(ErrorKind::InvalidData, "connection closed"))
+                    break Err(io::Error::new(ErrorKind::InvalidData, "connection closed"))
                 }
                 let status:OpCodes = serial_buf[0].into();
                 if status != SRSP  {
-                    break Err(Error::new(ErrorKind::InvalidData, "programmer returned error"))
+                    break Err(io::Error::new(ErrorKind::InvalidData, "programmer returned error"))
                 }
                 println!("Block uploaded")
             },
@@ -173,4 +181,20 @@ fn main() {
     println!("Sending SEND");
     serial_buf[0] = SEND as u8;
     let _bytes_written = port.write(&serial_buf[0..1]).expect("Write failed");
+}
+
+fn open_serial_port(portname: String) -> Result<Box<dyn SerialPort>, serialport::Error> {
+    let mut port = serialport::new(portname, 115_200)
+        .timeout(Duration::from_millis(100))
+        .open()?;
+
+    // 8N1
+    port.set_data_bits(DataBits::Eight)?;
+    port.set_parity(Parity::None)?;
+    port.set_stop_bits(StopBits::One)?;
+
+    // Arduino Leonardo need DTR to be high
+    port.write_data_terminal_ready(true)?;
+
+    return Ok(port);
 }
