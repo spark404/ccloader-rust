@@ -23,6 +23,10 @@ struct Args {
     /// The firmware file to upload
     #[arg(short, long)]
     firmware: std::path::PathBuf,
+
+    /// Verify all oploads
+    #[arg(long, action)]
+    verify: bool
 }
 
 #[repr(u8)]
@@ -54,6 +58,7 @@ fn main() {
 
     let portname = args.port;
     let filename = args.firmware.to_str().unwrap();
+    let verify = args.verify;
 
     let mut port = match open_serial_port(portname.to_owned()) {
         Err(why) => panic!("couldn't open port {}: {}", portname, why),
@@ -85,7 +90,7 @@ fn main() {
 
     println!("Sending SBEGIN");
     serial_buf[0] = SBEGIN as u8;
-    serial_buf[1] = 0;
+    serial_buf[1] = verify as u8;
     let _bytes_written = port.write(&serial_buf[0..2]).expect("Write failed");
 
     println!("Waiting for SRSP");
