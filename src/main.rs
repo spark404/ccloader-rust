@@ -127,6 +127,7 @@ fn main() {
     port.set_timeout(Duration::from_millis(2000))
         .expect("set timeout failed");
 
+    let mut block_count = 0;
     let upload_result = loop {
         // Read the next 512 bytes from the firmware file
         let result = file.read(&mut data_buf[1..513]);
@@ -164,12 +165,14 @@ fn main() {
                 if status != SRSP  {
                     break Err(io::Error::new(ErrorKind::InvalidData, "programmer returned error"))
                 }
-                println!("Block uploaded")
+                print!("Block {} of {} uploaded\r", block_count, blocks);
+                block_count += 1;
             },
             Err(e) => println!("{}", e)
         }
 
     };
+    println!();
 
     if upload_result.is_err() {
         println!("Upload failed")
