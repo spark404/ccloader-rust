@@ -165,8 +165,11 @@ fn main() {
                 if status != SRSP  {
                     break Err(io::Error::new(ErrorKind::InvalidData, "programmer returned error"))
                 }
-                print!("Block {} of {} uploaded\r", block_count, blocks);
+
                 block_count += 1;
+                print!("Block {} of {} uploaded\r", block_count, blocks);
+                io::stdout().flush().expect("flush issue on stdout");
+
             },
             Err(e) => println!("{}", e)
         }
