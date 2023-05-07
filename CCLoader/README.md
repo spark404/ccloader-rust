@@ -20,6 +20,6 @@ To wireup the Arduino:
 Note that connecting the 3.3v is optional when the
 device is powered by USB.
 
-This version has been tested with a CC2531 USB stick:
+This version has been tested with a CC2531 USB stick and an Arduino Leonardo:
 
 `ID 0451:16a8 Texas Instruments, Inc. CC2531 ZigBee`
