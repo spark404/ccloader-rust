@@ -16,6 +16,10 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Install libusb
+      run: sudo apt install -y libusb-1.0-0-dev libudev-dev
+      # Only install on Ubuntu
+      if: matrix.os == 'ubuntu-latest'    
     - name: Build
       run: cargo build --verbose
     - name: Run tests
