@@ -58,6 +58,8 @@ fn main() {
         Err(why) => panic!("couldn't open port {}: {}", portname, why),
         Ok(file) => file,
     };
+    port.set_timeout(Duration::from_millis(500))
+        .expect("set timeout failed");
 
     let mut file = match File::open(&args.firmware) {
         Err(why) => panic!("couldn't open {}: {}", filename, why),
