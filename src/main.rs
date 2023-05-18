@@ -143,7 +143,7 @@ fn main() {
     println!();
 
     if upload_result.is_err() {
-        println!("Upload failed")
+        println!("Upload failed: {}", upload_result.err().unwrap())
     }
 
     // restore timeout
@@ -152,6 +152,8 @@ fn main() {
 
     protocol::send_send(port.as_mut())
         .expect("failed to send SEND");
+
+    println!("Upload completed");
 }
 
 fn open_serial_port(portname: String) -> Result<Box<dyn SerialPort>, serialport::Error> {
